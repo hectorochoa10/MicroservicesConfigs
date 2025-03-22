@@ -1,0 +1,85 @@
+services:
+  #bd
+  mysqlserver:
+    container_name: mysqlserver
+    image: "mysql:8.0"
+    environment:
+      - MYSQL_ROOT_PASSWORD=netec123
+      - MYSQL_DATABASE=microservices
+    healthcheck:
+      test: mysqladmin -uroot -pnetec123 ping -h localhost
+
+  #config
+  config:
+    container_name: config
+    build: ./config
+    image: "config:v1"
+    healthcheck:
+      test: curl -f http://localhost:7777/micro-gateway/default
+
+  #eureka
+  eureka:
+    container_name: eureka
+    build: ./eureka
+    image: "eureka:v1"
+    ports:
+      - 9999:9999
+    healthcheck:
+      test: curl -f http://localhost:9999
+  #client
+  client:
+    container_name: client
+    build: ./client
+    image: "client:v1"
+    environment:
+      - DB_IP=mysqlserver
+      - DB_NAME=microservices
+      - DB_USER=root
+      - DB_PASSWORD=netec123
+      - EUREKA_IP=eureka
+      - CONFIG_SERVER_IP=config
+    depends_on:
+      mysqlserver:
+        condition: service_healthy
+      config:
+        condition: service_healthy
+      eureka:
+        condition: service_healthy
+    healthcheck:
+      test: curl -f http://localhost:8081/client
+
+
+  #order
+  order:
+    container_name: order
+    build: ./order
+    image: "order:v1"
+    environment:
+      - DB_IP=mysqlserver
+      - DB_NAME=microservices
+      - DB_USER=root
+      - DB_PASSWORD=netec123
+      - EUREKA_IP=eureka
+      - CONFIG_SERVER_IP=config
+    depends_on:
+      client:
+        condition: service_healthy
+    healthcheck:
+      test: curl -f http://localhost:8082/order
+
+  #gateway
+  gateway:
+    container_name: gateway
+    build: ./gateway
+    image: "gateway:v1"
+    environment:
+      - EUREKA_IP=eureka
+      - ISSUER_URI=http://40.74.249.41/auth/realms/netec
+      - JWKS_URI=http://40.74.249.41/auth/realms/netec/protocol/openid-connect/certs
+      - CONFIG_SERVER_IP=config
+    
+    ports:
+      - 8888:8888
+    depends_on:
+      order:
+        condition: service_healthy
